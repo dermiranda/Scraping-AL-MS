@@ -1,0 +1,93 @@
+#Carregando biblitecas do R
+library(binman)
+library(RSelenium)
+library(rvest)
+library(magrittr)
+library(tidyverse)
+
+setwd("~/Assembleia Legislativa")
+
+#Iniciando sessão (usando versão do chromedriver compatível)
+rD <- rsDriver(chromever = "75.0.3770.90")
+
+remDr <- rD[['client']]
+
+remDr$navigate('http://sgpl.consulta.al.ms.gov.br/sgpl-publico/#/busca-proposicoes')
+
+#Campo de pesquisa e botão "Pesquisar"
+busca <- remDr$findElement(using = 'xpath', value = '/html/body/ui-view/div/div/div[3]/div/div[1]/div[1]/div[4]/span/span/input')
+
+pesq <- remDr$findElement(using = 'id', value = 'buscarFiltrosId')
+
+pesq$clickElement()
+
+#Categorias de busca
+ temas <- c("A pedido", "Ação social", "Administração e serviço público", "Agropecuária",
+            "Apoio", "Cidadania e direitos humanos", "Ciência e tecnologia", "Comunicação",
+            "Condecorações", "Constituição e justiça", "Cumprimentos/ Agradecimentos",
+            "Desenvolvimento Agrário", "Educação, Cultura e Desporto", "Energia",
+            "Habitação", "Indústria e comércio", "Orçamento e finanças", "Outros", "Pêsames",
+            "Saneamento", "Saúde e previdência","Segurança", "Sistema viário", "Trânsito",
+            "Transporte", "Turismo e meio ambiente", "Utilidade pública")
+
+#Abrindo uma sequencia de paginas. *Ajustei manualmente para 100 itens* pois não consegui fazer automaticamente :(
+
+prox_pg <- remDr$findElement(using = 'xpath', value = '//*[@id="grid-busca-proposicao"]/div[3]/a[3]/span')
+tabela <- NULL
+links <- cont <- td <- NULL
+
+#A visualização foi ajustada para 100 itens por página manualmente
+
+for(i in 1:length(temas)){
+  #passando o critério de busca
+  
+  busca$clickElement()
+  busca$clearElement()
+  busca$clickElement()
+  busca$sendKeysToElement(list(temas[i]))
+  busca$click()
+  pesq$clickElement()
+  
+  #Qtdade pagina para iteração (qt_pg raspa informações sobre a quantidade de páginas 
+  #geradas em cada busca. O número de páginas fica no final, logo, a posição que corresponde
+  #à extensão do vetor serve de índice)
+  
+  pg <- read_html(remDr$getPageSource()[[1]])
+  qt_pg <- pg%>%html_nodes('a')%>%html_attr(name = 'data-page')
+  fim <- (as.numeric(qt_pg[length(qt_pg)])) + 1
+  pg <- NULL
+   
+  fim
+
+  ##Raspagem
+  for(a in 1:fim){
+    pg <- read_html(remDr$getPageSource()[[1]])
+    
+    #guardando os links
+
+    td <- pg%>%html_nodes('td')%>%html_nodes('a')%>%
+    html_attr(name = 'href')
+  
+    for (i in 1:length(td)){
+    cont <- length(links) + 1
+    links[cont] <- td[i]
+    }
+  td <- NULL
+ 
+#próxima página
+  
+  Sys.sleep(2) 
+  prox_pg$clickElement()
+  }
+  #assign(paste("tema", i, sep= '_'), links)
+  #rm(links, a)
+}
+
+rm(a, qt_pg, i, cont, td)
+
+#salvando os dados
+temp <- as.data.frame(unique(links))
+write_csv(temp, "utilPubl.csv")
+
+links <- temp <- NULL
+

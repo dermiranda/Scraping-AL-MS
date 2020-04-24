@@ -1,0 +1,109 @@
+#Bibliotecas do R
+library(binman)
+library(RSelenium)
+library(rvest)
+library(magrittr)
+library(tidyverse)
+
+#Carregando, renomeando, mesclando arquivos
+setwd("~/Assembleia Legislativa/Links")
+
+nome <- arquivos <- list.files(full.names = T)
+
+for(i in 1:length(nome)){
+  nome[i] <- gsub('./', "", arquivos[i])
+  nome[i] <- gsub('.csv', '', nome[i])
+}
+rm(i)
+#Salvando em um data.frame
+
+p_alms <- data.frame(link = "", assunto = "", autor = "", coautor = "", tipo_prop ="",
+                    dt_leitura = "", sigla = "", ementa ="", n_protocolo ="",
+                    n_processo = "", n_proj = "", referencia = "", n_doc = "", dt_doc = "",
+                    dt_DOficial = "", n_DOficial = "", pg_DOficial = "", reg_tramit = "",
+                    situacao = "", governador = "", stringsAsFactors = F)
+
+
+antes <- lubridate::now()
+linha <- 1
+for(a in 1:length(arquivos)){
+  #print(a)
+  temp <- read.csv(arquivos[a], header = T, sep = '', stringsAsFactors = F)
+ 
+  for(b in 1:nrow(temp)){
+    p_alms[linha,1] <- temp[b,1]
+    p_alms[linha, 2] <- nome[a]
+    linha <- nrow(p_alms) + 1
+  }
+  print(b)
+}
+
+print(lubridate::now()-antes)
+rm(a, b, antes, temp, linha, arquivos, nome)
+
+setwd("~/Assembleia Legislativa")
+save.image('proposicoes_alms.RData')
+
+#Verificando integridade dos dados, removendo duplicatas
+p_alms <- unique(p_alms)
+p_alms[,2] <- as.factor(p_alms[,2])
+table(p_alms[,2])
+
+
+#################
+##### RASPAGEM #######
+
+setwd("~/Assembleia Legislativa")
+
+#Vetores auxiliares para localizar conteúdo em cada página
+dados <- c('Autor:', 'Coautor(es):', 'Tipo de Proposição:',
+           'Data de Leitura:', 'Sigla:', 'Ementa:', 
+           'Nº Protocolo:', 'Nº Processo:', 'Nº Projeto:', 
+           'Referência:', 'Nº Documento:', 'Data Documento:', 
+           'Data Diário Oficial:', 'Número do Diário Oficial:',
+           'Página do Diário Oficial:')
+
+
+coluna_dados <- c(3,4,5,6,7,8,9,10,11,12,13,14,15,16,17)
+
+#Iniciando sessão (usando versão do chromedriver compatível)
+urlGeral <- 'http://sgpl.consulta.al.ms.gov.br/sgpl-publico/'
+
+rD <- rsDriver(chromever = "75.0.3770.90")
+remDr <- rD[['client']]
+
+antes <- lubridate::now()
+for(i in 1:nrow(p_alms[1])){
+  #construindo a url  
+  url <- paste0(urlGeral, p_alms[i,1])
+  Sys.sleep(1)
+  remDr$navigate(url)
+  
+  #raspando a tabela de cada pagina
+  pg <- read_html(remDr$getPageSource()[[1]])
+  
+  detalhe <- html_nodes(pg, 'td p')%>%
+    html_text
+  #dados da proposição
+  for(d in 1:length(dados)){
+    dt <- charmatch(dados[d], detalhe)
+    dt <- dt + 1
+    col <- coluna_dados[d]
+    p_alms[i,col] <- detalhe[dt]
+  }
+ #Salvando em arquivo a cada 100 proposições raspadas
+  print(i)
+  if(i%%100 == 0){
+    save.image('proposicoes_alms.RData')
+  }
+}
+lubridate::now()-antes #Registra tempo total do processo de raspagem
+
+rm(a, andamento, col, coluna_andam, coluna_dados, d, dados, detalhe,
+   dt,dt2, i, pg, rD, remDr, url, urlGeral, antes)
+
+#cópia de segurança
+save.image('proposicoes_alms.RData')
+write.csv(p_alms, 'proposta_alms.csv', fileEncoding = "UTF-8")
+
+
